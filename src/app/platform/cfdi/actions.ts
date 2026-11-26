@@ -35,8 +35,15 @@ export async function guardarCfdi(entrada: unknown): Promise<GuardarResultado> {
 
   const cfdi = validado.datos;
 
+  // Cuando el complemento se sube desde el detalle de una factura, el navegador
+  // envía el id de esa factura para dejarlo vinculado.
+  const bruto = entrada as Record<string, unknown>;
+  const relacionadoId =
+    typeof bruto.relacionadoId === "string" ? bruto.relacionadoId.trim() : "";
+
   const { error } = await supabase.from("cfdi").insert({
     organizacion_id: organizacion,
+    relacionado_id: relacionadoId || null,
     uuid_fiscal: cfdi.timbre?.uuid ?? null,
     version: cfdi.version,
     serie: cfdi.serie || null,
@@ -64,9 +71,33 @@ export async function guardarCfdi(entrada: unknown): Promise<GuardarResultado> {
 
   if (error) {
     console.error("[CFDI] Error al guardar:", error);
-    if (error.code === "23505") {
+
+    // El CFDI ya estaba registrado. En vez de fallar, completamos la fila
+    // existente con lo que falte: así se puede adjuntar después el PDF de un
+    // complemento que se subió antes sin él.
+    const uuid = cfdi.timbre?.uuid;
+    if (error.code === "23505" && uuid) {
+      const cambios: Record<string, string> = {};
+      if (validado.pdf) cambios.pdf = validado.pdf;
+      if (relacionadoId) cambios.relacionado_id = relacionadoId;
+
+      if (Object.keys(cambios).length > 0) {
+        const { error: errorActualizar } = await supabase
+          .from("cfdi")
+          .update(cambios)
+          .eq("organizacion_id", organizacion)
+          .eq("uuid_fiscal", uuid);
+
+        if (!errorActualizar) {
+          revalidatePath("/platform/cfdi");
+          return { ok: true };
+        }
+        console.error("[CFDI] Error al actualizar:", errorActualizar);
+      }
+
       return { ok: false, mensaje: "Este CFDI ya está registrado en tu organización." };
     }
+
     return {
       ok: false,
       mensaje: `No se pudo guardar el CFDI (${error.code}): ${error.message}`,

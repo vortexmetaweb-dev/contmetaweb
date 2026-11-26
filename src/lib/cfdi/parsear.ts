@@ -2,6 +2,7 @@ import type {
   Cfdi,
   Concepto,
   ImpuestoDetalle,
+  Pago,
   Timbre,
   Tributos,
 } from "./tipos";
@@ -54,6 +55,7 @@ export function parsearCfdi(xml: string): Cfdi {
     conceptos: leerConceptos(comprobante),
     impuestos: leerTributos(hijo(comprobante, "Impuestos")),
     timbre: leerTimbre(documento),
+    pagos: leerPagos(documento),
   };
 }
 
@@ -115,6 +117,31 @@ function leerTimbre(documento: Document): Timbre | null {
     selloCfd: atributo(nodo, "SelloCFD"),
     selloSat: atributo(nodo, "SelloSAT"),
   };
+}
+
+function leerPagos(documento: Document): Pago[] {
+  const pagos = documento.getElementsByTagNameNS("*", "Pagos")[0];
+  if (!pagos) return [];
+
+  return hijos(pagos, "Pago").map((pago) => ({
+    fechaPago: atributo(pago, "FechaPago"),
+    formaDePagoP: atributo(pago, "FormaDePagoP"),
+    monedaP: atributo(pago, "MonedaP"),
+    monto: atributo(pago, "Monto"),
+    tipoCambioP: atributo(pago, "TipoCambioP"),
+    numOperacion: atributo(pago, "NumOperacion"),
+    doctos: hijos(pago, "DoctoRelacionado").map((docto) => ({
+      idDocumento: atributo(docto, "IdDocumento"),
+      numParcialidad: atributo(docto, "NumParcialidad"),
+      impSaldoAnt: atributo(docto, "ImpSaldoAnt"),
+      impPagado: atributo(docto, "ImpPagado"),
+      impSaldoInsoluto: atributo(docto, "ImpSaldoInsoluto"),
+      objetoImpDr: atributo(docto, "ObjetoImpDR"),
+      monedaDr: atributo(docto, "MonedaDR"),
+      tipoCambioDr: atributo(docto, "TipoCambioDR"),
+      metodoDePagoDr: atributo(docto, "MetodoDePagoDR"),
+    })),
+  }));
 }
 
 function hijos(elemento: Element | null, nombre: string): Element[] {

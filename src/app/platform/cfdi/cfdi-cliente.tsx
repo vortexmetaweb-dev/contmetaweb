@@ -71,6 +71,7 @@ export type CfdiGuardado = {
   creado_en: string;
   xml: string;
   pdf: string | null;
+  relacionado_id: string | null;
 };
 
 const MAX_XML = 1024 * 1024;
@@ -200,6 +201,7 @@ export function CfdiCliente({ cfdis }: { cfdis: CfdiGuardado[] }) {
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [abierto, setAbierto] = useState(false);
+  const [relacionadoId, setRelacionadoId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -289,7 +291,12 @@ export function CfdiCliente({ cfdis }: { cfdis: CfdiGuardado[] }) {
 
     setGuardando(true);
     try {
-      const resultado = await guardarCfdi({ xml, datos, pdf: pdfBase64 });
+      const resultado = await guardarCfdi({
+        xml,
+        datos,
+        pdf: pdfBase64,
+        relacionadoId: relacionadoId ?? undefined,
+      });
       if (resultado.ok) {
         limpiar();
         setAbierto(false);
@@ -305,7 +312,13 @@ export function CfdiCliente({ cfdis }: { cfdis: CfdiGuardado[] }) {
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 pb-14">
-      <Sheet open={abierto} onOpenChange={setAbierto}>
+      <Sheet
+        open={abierto}
+        onOpenChange={(ab) => {
+          setAbierto(ab);
+          if (!ab) setRelacionadoId(null);
+        }}
+      >
         <SheetTrigger
           render={
             <Button className="w-fit bg-brand-green text-white hover:bg-brand-green/90" />
@@ -317,10 +330,11 @@ export function CfdiCliente({ cfdis }: { cfdis: CfdiGuardado[] }) {
           className="dark inset-y-4 right-4 h-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border-0 bg-sidebar p-0 shadow-2xl"
         >
           <SheetHeader className="border-b p-5">
-            <SheetTitle>Adjuntar CFDI</SheetTitle>
+            <SheetTitle>{relacionadoId ? "Complemento de pago" : "Adjuntar CFDI"}</SheetTitle>
             <SheetDescription>
-              El XML contiene los datos del comprobante. El PDF es la representación impresa y solo se
-              verifica el tipo y el tamaño.
+              {relacionadoId
+                ? "Se vinculará a la factura seleccionada. Adjunta el XML del complemento de pago (tipo P) y, si lo tienes, su PDF."
+                : "El XML contiene los datos del comprobante. El PDF es la representación impresa y solo se verifica el tipo y el tamaño."}
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-5">
@@ -443,7 +457,13 @@ export function CfdiCliente({ cfdis }: { cfdis: CfdiGuardado[] }) {
 
       {datos ? <DetalleCfdi datos={datos} /> : null}
 
-      <SeccionGuardados cfdis={cfdis} />
+      <SeccionGuardados
+        cfdis={cfdis}
+        onAgregarComplemento={(cfdi) => {
+          setRelacionadoId(cfdi.id);
+          setAbierto(true);
+        }}
+      />
     </div>
   );
 }
@@ -659,6 +679,31 @@ function formatearTamano(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Empaqueta en un ZIP todos los archivos de la carpeta: el XML y, si existe, el
+// PDF del comprobante, más los complementos de pago que tenga vinculados.
+async function descargarDocumentos(cfdi: CfdiGuardado, complementos: CfdiGuardado[] = []) {
+  const zip = new JSZip();
+  const agregar = (comprobante: CfdiGuardado) => {
+    const nombre = nombreFactura(comprobante.uuid_fiscal);
+    zip.file(`${nombre}.xml`, comprobante.xml);
+    if (comprobante.pdf) {
+      const base64 = comprobante.pdf.split(",")[1] ?? comprobante.pdf;
+      zip.file(`${nombre}.pdf`, base64, { base64: true });
+    }
+  };
+
+  agregar(cfdi);
+  for (const complemento of complementos) agregar(complemento);
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${nombreFactura(cfdi.uuid_fiscal)}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function FilaArchivo({
   icono,
   nombre,
@@ -697,8 +742,23 @@ function FilaArchivo({
   );
 }
 
-function SeccionGuardados({ cfdis }: { cfdis: CfdiGuardado[] }) {
+function SeccionGuardados({
+  cfdis,
+  onAgregarComplemento,
+}: {
+  cfdis: CfdiGuardado[];
+  onAgregarComplemento: (cfdi: CfdiGuardado) => void;
+}) {
   const [seleccionado, setSeleccionado] = useState<CfdiGuardado | null>(null);
+
+  // Los complementos de pago (tipo P) vinculados a una factura no se muestran
+  // como carpeta suelta: viven dentro del detalle de esa factura.
+  const facturas = cfdis.filter((cfdi) => cfdi.tipo_comprobante !== "P" || !cfdi.relacionado_id);
+  const complementos = seleccionado
+    ? cfdis.filter(
+        (cfdi) => cfdi.tipo_comprobante === "P" && cfdi.relacionado_id === seleccionado.id,
+      )
+    : [];
 
   const abrir = (cfdi: CfdiGuardado) => {
     setSeleccionado(cfdi);
@@ -715,7 +775,7 @@ function SeccionGuardados({ cfdis }: { cfdis: CfdiGuardado[] }) {
         <CardDescription>Comprobantes registrados en tu organización.</CardDescription>
       </CardHeader>
       <CardContent>
-        {cfdis.length === 0 ? (
+        {facturas.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -729,7 +789,7 @@ function SeccionGuardados({ cfdis }: { cfdis: CfdiGuardado[] }) {
           </Empty>
         ) : (
           <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {cfdis.map((cfdi) => (
+            {facturas.map((cfdi) => (
               <button
                 key={cfdi.id}
                 type="button"
@@ -808,30 +868,50 @@ function SeccionGuardados({ cfdis }: { cfdis: CfdiGuardado[] }) {
                     />
                   )}
                 </div>
+
+                {complementos.length > 0 ? (
+                  <div className="mt-4 flex flex-col gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">Complementos de pago</p>
+                    <div className="divide-y overflow-hidden rounded-lg border bg-card">
+                      {complementos.map((complemento) => (
+                        <button
+                          key={complemento.id}
+                          type="button"
+                          onClick={() => void descargarDocumentos(complemento)}
+                          className="block w-full text-left transition-colors hover:bg-muted/40"
+                        >
+                          <FilaArchivo
+                            icono={<ReceiptTextIcon className="size-5 text-brand-green" />}
+                            nombre={nombreFactura(complemento.uuid_fiscal)}
+                            fecha={fecha(complemento.fecha ?? complemento.creado_en)}
+                            tipo={complemento.pdf ? "Complemento de pago · XML + PDF" : "Complemento de pago · XML"}
+                            tamBytes={new Blob([complemento.xml]).size}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="shrink-0 border-t p-5">
+              <div className="flex shrink-0 flex-col gap-3 border-t p-5">
                 <Button
                   className="w-full bg-brand-green text-white hover:bg-brand-green/90"
-                  onClick={async () => {
-                    const zip = new JSZip();
-                    const nombre = nombreFactura(seleccionado.uuid_fiscal);
-                    zip.file(`${nombre}.xml`, seleccionado.xml);
-                    if (seleccionado.pdf) {
-                      const base64 = seleccionado.pdf.split(",")[1] ?? seleccionado.pdf;
-                      zip.file(`${nombre}.pdf`, base64, { base64: true });
-                    }
-                    const blob = await zip.generateAsync({ type: "blob" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `${nombre}.zip`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
+                  onClick={() => void descargarDocumentos(seleccionado, complementos)}
                 >
                   <FileDownIcon className="size-4" />
                   Descargar documentos
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    onAgregarComplemento(seleccionado);
+                    cerrar();
+                  }}
+                >
+                  <ReceiptTextIcon className="size-4" />
+                  Complemento de pago
                 </Button>
               </div>
             </>

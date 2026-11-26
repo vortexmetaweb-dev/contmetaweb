@@ -52,6 +52,15 @@ create table if not exists public.cfdi (
 -- Añade la columna pdf en despliegues donde la tabla cfdi ya existía.
 alter table public.cfdi add column if not exists pdf text;
 
+-- Liga un complemento de pago (tipo P) con la factura que paga. Nulo en el resto
+-- de comprobantes.
+alter table public.cfdi add column if not exists relacionado_id uuid
+  references public.cfdi(id) on delete set null;
+
+create index if not exists cfdi_relacionado_idx
+  on public.cfdi (relacionado_id)
+  where relacionado_id is not null;
+
 create index if not exists cfdi_organizacion_idx
   on public.cfdi (organizacion_id, creado_en desc);
 

@@ -28,7 +28,7 @@ async function CfdiContenido() {
     const { data } = await supabase
       .from("cfdi")
       .select(
-        "id, uuid_fiscal, serie, folio, fecha, tipo_comprobante, moneda, total, emisor_nombre, receptor_nombre, creado_en, xml, pdf",
+        "id, uuid_fiscal, serie, folio, fecha, tipo_comprobante, moneda, total, emisor_nombre, receptor_nombre, creado_en, xml, pdf, relacionado_id",
       )
       .order("creado_en", { ascending: false })
       .limit(100);

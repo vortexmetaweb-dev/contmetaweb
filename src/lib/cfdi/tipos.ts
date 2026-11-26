@@ -46,6 +46,30 @@ export type Tributos = {
   retenciones: ImpuestoDetalle[];
 };
 
+// Documentos que paga un complemento de pago (CFDI tipo P). Cada uno referencia
+// una factura por su UUID (IdDocumento).
+export type DoctoRelacionado = {
+  idDocumento: string;
+  numParcialidad: string;
+  impSaldoAnt: string;
+  impPagado: string;
+  impSaldoInsoluto: string;
+  objetoImpDr: string;
+  monedaDr: string;
+  tipoCambioDr: string;
+  metodoDePagoDr: string;
+};
+
+export type Pago = {
+  fechaPago: string;
+  formaDePagoP: string;
+  monedaP: string;
+  monto: string;
+  tipoCambioP: string;
+  numOperacion: string;
+  doctos: DoctoRelacionado[];
+};
+
 export type Timbre = {
   version: string;
   uuid: string;
@@ -77,4 +101,6 @@ export type Cfdi = {
   conceptos: Concepto[];
   impuestos: Tributos;
   timbre: Timbre | null;
+  // Vacío en comprobantes que no son complementos de pago (tipo distinto de P).
+  pagos: Pago[];
 };

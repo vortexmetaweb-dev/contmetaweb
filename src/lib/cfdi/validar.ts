@@ -1,8 +1,10 @@
 import type {
   Cfdi,
   Concepto,
+  DoctoRelacionado,
   Emisor,
   ImpuestoDetalle,
+  Pago,
   Receptor,
   Timbre,
   Tributos,
@@ -17,6 +19,8 @@ export const MAX_PDF = 5 * 1024 * 1024;
 const MAX_JSON = 2 * 1024 * 1024;
 const MAX_CONCEPTOS = 2000;
 const MAX_IMPUESTOS = 500;
+const MAX_PAGOS = 500;
+const MAX_DOCTOS = 500;
 
 const RFC = /^([A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}|XAXX010101000|XEXX010101000)$/;
 const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
@@ -144,6 +148,7 @@ function limpiar(entrada: Record<string, unknown>): Cfdi {
     conceptos: limpiarConceptos(entrada.conceptos),
     impuestos: limpiarTributos(entrada.impuestos),
     timbre: limpiarTimbre(entrada.timbre),
+    pagos: limpiarPagos(entrada.pagos),
   };
 }
 
@@ -262,6 +267,55 @@ function limpiarTimbre(valor: unknown): Timbre | null {
     selloCfd: texto(valor.selloCfd, 2000),
     selloSat: texto(valor.selloSat, 2000),
   };
+}
+
+function limpiarPagos(valor: unknown): Pago[] {
+  if (!Array.isArray(valor)) return [];
+
+  return valor.slice(0, MAX_PAGOS).map((bruto) => {
+    if (!esObjeto(bruto)) {
+      throw new CfdiInvalido("Un pago del complemento no tiene datos válidos.");
+    }
+
+    return {
+      fechaPago: texto(bruto.fechaPago, 19),
+      formaDePagoP: texto(bruto.formaDePagoP, 2),
+      monedaP: texto(bruto.monedaP, 3),
+      monto: importe(bruto.monto, "El monto de un pago no es un número válido."),
+      tipoCambioP: importe(bruto.tipoCambioP, "El tipo de cambio del pago no es un número válido."),
+      numOperacion: texto(bruto.numOperacion, 100),
+      doctos: limpiarDoctos(bruto.doctos),
+    };
+  });
+}
+
+function limpiarDoctos(valor: unknown): DoctoRelacionado[] {
+  if (!Array.isArray(valor)) return [];
+
+  return valor.slice(0, MAX_DOCTOS).map((bruto) => {
+    if (!esObjeto(bruto)) {
+      throw new CfdiInvalido("Un documento relacionado no tiene datos válidos.");
+    }
+
+    return {
+      // Se normaliza a mayúsculas para poder cruzar con el UUID de la factura.
+      idDocumento: texto(bruto.idDocumento, 36).toUpperCase(),
+      numParcialidad: texto(bruto.numParcialidad, 5),
+      impSaldoAnt: importe(bruto.impSaldoAnt, "El saldo anterior no es un número válido."),
+      impPagado: importe(bruto.impPagado, "El importe pagado no es un número válido."),
+      impSaldoInsoluto: importe(
+        bruto.impSaldoInsoluto,
+        "El saldo insoluto no es un número válido.",
+      ),
+      objetoImpDr: texto(bruto.objetoImpDr, 2),
+      monedaDr: texto(bruto.monedaDr, 3),
+      tipoCambioDr: importe(
+        bruto.tipoCambioDr,
+        "El tipo de cambio del documento no es un número válido.",
+      ),
+      metodoDePagoDr: texto(bruto.metodoDePagoDr, 3),
+    };
+  });
 }
 
 function rfc(valor: unknown, mensaje: string): string {
