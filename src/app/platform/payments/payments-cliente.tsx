@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   BarChart3Icon,
   CalendarDaysIcon,
+  CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CreditCardIcon,
   FilterIcon,
   ImagePlusIcon,
   PencilIcon,
   PieChartIcon,
   PlusIcon,
+  RepeatIcon,
   SaveIcon,
   SearchIcon,
   Trash2Icon,
@@ -36,7 +40,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -71,6 +75,15 @@ export type PagoGuardado = {
 };
 
 const RECURRENCIAS = ["Monthly", "Bimonthly", "Quarterly", "Semiannual", "Annual", "One-time"];
+
+const RECURRENCIA_META: Record<string, { icono: React.ReactNode; descripcion: string }> = {
+  Monthly: { icono: <RepeatIcon className="size-4" />, descripcion: "Charged every month." },
+  Bimonthly: { icono: <RepeatIcon className="size-4" />, descripcion: "Charged every two months." },
+  Quarterly: { icono: <CalendarDaysIcon className="size-4" />, descripcion: "Charged every three months." },
+  Semiannual: { icono: <CalendarDaysIcon className="size-4" />, descripcion: "Charged every six months." },
+  Annual: { icono: <CalendarIcon className="size-4" />, descripcion: "Charged once a year." },
+  "One-time": { icono: <CalendarIcon className="size-4" />, descripcion: "A single, non-recurring charge." },
+};
 const DIAS = Array.from({ length: 31 }, (_, indice) => indice + 1);
 const MAX_LOGO = 2 * 1024 * 1024;
 
@@ -83,10 +96,6 @@ const COLORES_SEGMENTOS = [
   "#9ee0c0",
   "#0a3322",
 ];
-
-// Same visual treatment as Input, for the <select> fields in the form.
-const CLASE_SELECT =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30";
 
 export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
   const router = useRouter();
@@ -273,78 +282,89 @@ export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
                 <PlusIcon data-icon="inline-start" />
                 New payment
               </SheetTrigger>
-              <SheetContent className="dark inset-y-4 right-4 h-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border-0 bg-sidebar p-0 shadow-2xl">
-                <SheetHeader className="border-b p-5">
-                  <SheetTitle>
+              <SheetContent className="dark flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden inset-y-4 right-4 h-auto w-[calc(100%-2rem)] max-w-md rounded-2xl border-0 bg-sidebar p-0 shadow-2xl">
+                <SheetHeader className="border-b px-5 py-4">
+                  <SheetTitle className="flex items-center gap-2">
+                    <span className="flex size-8 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
+                      <CreditCardIcon className="size-4" />
+                    </span>
                     {pagoEnEdicion ? "Edit payment" : "Register fixed payment"}
                   </SheetTitle>
-                  <SheetDescription>
+                  <SheetDescription className="mt-1">
                     {pagoEnEdicion
                       ? "Update the amount, concept, day or recurrence of this payment."
-                      : "Enter the amount, concept and the day of the month when it is paid. Recurrence defines how often it repeats."}
+                      : "Amount, concept, day of the month and how often it repeats."}
                   </SheetDescription>
                 </SheetHeader>
 
-                <div className="flex-1 overflow-y-auto p-5">
-                  <FieldGroup>
+                <div className="flex-1 overflow-hidden px-5 py-3">
+                  <FieldGroup className="gap-4">
                     <Field>
-                      <div className="flex items-center justify-between gap-2">
-                        <FieldLabel htmlFor="pago-concepto">Concept</FieldLabel>
-                        {logo ? (
-                          <img
-                            src={logo}
-                            alt=""
-                            className="size-6 rounded-lg object-cover"
-                          />
-                        ) : concepto.trim() ? (
-                          <Isotipo concepto={concepto} compacto />
-                        ) : null}
+                      <FieldLabel htmlFor="pago-concepto">Concept</FieldLabel>
+                      <div className="flex gap-2">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/60">
+                          {logo ? (
+                            <img
+                              src={logo}
+                              alt=""
+                              className="size-full rounded-xl object-cover"
+                            />
+                          ) : (
+                            <Isotipo concepto={concepto || "P"} compacto />
+                          )}
+                        </div>
+                        <Input
+                          id="pago-concepto"
+                          value={concepto}
+                          onChange={(evento) => setConcepto(evento.target.value)}
+                          placeholder="Rent, internet, hosting…"
+                          maxLength={120}
+                          disabled={guardando}
+                          className="h-11 bg-muted/60 border-0 focus-visible:ring-2 focus-visible:ring-brand-green/40"
+                        />
                       </div>
-                      <Input
-                        id="pago-concepto"
-                        value={concepto}
-                        onChange={(evento) => setConcepto(evento.target.value)}
-                        placeholder="Rent, internet, hosting…"
-                        maxLength={120}
-                        disabled={guardando}
-                      />
-                      <FieldDescription>
-                        The icon is generated automatically from the concept initials unless you upload a logo.
-                      </FieldDescription>
                     </Field>
 
                     <Field>
                       <FieldLabel>Logo / icon</FieldLabel>
                       {logo ? (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 rounded-xl border bg-muted/40 p-3">
                           <img
                             src={logo}
                             alt="Payment logo preview"
-                            className="size-16 rounded-lg border object-cover"
+                            className="size-12 rounded-lg object-cover"
                           />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm dark:text-white/90">Custom logo</p>
+                            <p className="text-xs text-muted-foreground dark:text-white/60">
+                              Replaces the generated icon
+                            </p>
+                          </div>
                           <Button
                             type="button"
-                            variant="outline"
-                            size="sm"
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setLogo(null)}
                             disabled={guardando}
+                            className="text-muted-foreground hover:text-destructive"
                           >
-                            <XIcon data-icon="inline-start" />
-                            Remove
+                            <XIcon />
                           </Button>
                         </div>
                       ) : (
                         <label
                           htmlFor="pago-logo"
-                          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input py-6 text-center transition-colors hover:border-brand-green hover:bg-brand-green/[0.03]"
+                          className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-input bg-muted/30 px-3 py-3 transition-colors hover:border-brand-green hover:bg-brand-green/[0.04]"
                         >
-                          <ImagePlusIcon className="size-5 text-muted-foreground dark:text-white/60" />
-                          <span className="text-sm text-muted-foreground dark:text-white/60">
-                            Click to upload an image
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-green/10 text-brand-green">
+                            <ImagePlusIcon className="size-4" />
                           </span>
-                          <span className="text-xs text-muted-foreground dark:text-white/40">
-                            PNG, JPG or SVG · max 2 MB
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm dark:text-white/90">Upload a logo</p>
+                            <p className="text-xs text-muted-foreground dark:text-white/60">
+                              PNG, JPG or SVG · max 2 MB
+                            </p>
+                          </div>
                           <input
                             id="pago-logo"
                             type="file"
@@ -355,9 +375,6 @@ export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
                           />
                         </label>
                       )}
-                      <FieldDescription>
-                        Optional. If you do not upload one, an icon will be generated from the concept.
-                      </FieldDescription>
                     </Field>
 
                     <Field>
@@ -365,7 +382,7 @@ export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
                       <div className="relative">
                         <span
                           aria-hidden="true"
-                          className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-sm text-muted-foreground dark:text-white/80"
+                          className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm text-muted-foreground dark:text-white/70"
                         >
                           $
                         </span>
@@ -378,52 +395,33 @@ export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
                           value={monto}
                           onChange={(evento) => setMonto(evento.target.value)}
                           placeholder="0.00"
-                          className="pl-6 tabular-nums"
+                          className="h-11 pl-8 tabular-nums bg-muted/60 border-0 focus-visible:ring-2 focus-visible:ring-brand-green/40"
                           disabled={guardando}
                         />
                       </div>
-                      <FieldDescription>Amount in Mexican pesos (MXN).</FieldDescription>
                     </Field>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <Field>
-                        <FieldLabel htmlFor="pago-dia">Payment day</FieldLabel>
-                        <select
-                          id="pago-dia"
-                          className={CLASE_SELECT}
-                          value={diaPago}
-                          onChange={(evento) => setDiaPago(evento.target.value)}
-                          disabled={guardando}
-                        >
-                          {DIAS.map((dia) => (
-                            <option key={dia} value={dia}>
-                              Day {dia}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
+                    <Field>
+                      <FieldLabel>Payment day</FieldLabel>
+                      <DiaPicker
+                        valor={diaPago}
+                        onChange={setDiaPago}
+                        disabled={guardando}
+                      />
+                    </Field>
 
-                      <Field>
-                        <FieldLabel htmlFor="pago-recurrencia">Recurrence</FieldLabel>
-                        <select
-                          id="pago-recurrencia"
-                          className={CLASE_SELECT}
-                          value={recurrencia}
-                          onChange={(evento) => setRecurrencia(evento.target.value)}
-                          disabled={guardando}
-                        >
-                          {RECURRENCIAS.map((opcion) => (
-                            <option key={opcion} value={opcion}>
-                              {opcion}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                    </div>
+                    <Field>
+                      <FieldLabel>Recurrence</FieldLabel>
+                      <RecurrenciaPicker
+                        valor={recurrencia}
+                        onChange={setRecurrencia}
+                        disabled={guardando}
+                      />
+                    </Field>
                   </FieldGroup>
                 </div>
 
-                <SheetFooter className="border-t p-5">
+                <SheetFooter className="border-t px-5 py-4">
                   <Button variant="ghost" onClick={() => setAbierto(false)} disabled={guardando}>
                     Cancel
                   </Button>
@@ -606,6 +604,244 @@ export function PaymentsCliente({ pagos }: { pagos: PagoGuardado[] }) {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// Horizontal swipe picker for the payment day (1–31). Same interaction as the
+// recurrence picker: one option at a time, swipe sideways or use the arrows.
+function DiaPicker({
+  valor,
+  onChange,
+  disabled,
+}: {
+  valor: string;
+  onChange: (valor: string) => void;
+  disabled?: boolean;
+}) {
+  const indice = Math.max(0, DIAS.indexOf(Number(valor)));
+  const [arrastrando, setArrastrando] = useState(false);
+  const [desplazamiento, setDesplazamiento] = useState(0);
+  const inicioRef = useRef<{ x: number; indice: number } | null>(null);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  const irA = (nuevo: number) => {
+    const limite = Math.min(Math.max(nuevo, 0), DIAS.length - 1);
+    if (limite !== indice) {
+      onChange(String(DIAS[limite]));
+    }
+  };
+
+  const onPointerDown = (evento: React.PointerEvent) => {
+    if (disabled) return;
+    inicioRef.current = { x: evento.clientX, indice };
+    setArrastrando(true);
+    (evento.target as Element).setPointerCapture?.(evento.pointerId);
+  };
+
+  const onPointerMove = (evento: React.PointerEvent) => {
+    if (!arrastrando || !inicioRef.current) return;
+    const ancho = contenedorRef.current?.offsetWidth ?? 1;
+    const delta = evento.clientX - inicioRef.current.x;
+    setDesplazamiento(delta / ancho);
+  };
+
+  const onPointerUp = () => {
+    if (!inicioRef.current) return;
+    const umbral = 0.2;
+    if (desplazamiento < -umbral) {
+      irA(inicioRef.current.indice + 1);
+    } else if (desplazamiento > umbral) {
+      irA(inicioRef.current.indice - 1);
+    }
+    inicioRef.current = null;
+    setArrastrando(false);
+    setDesplazamiento(0);
+  };
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => irA(indice - 1)}
+        disabled={disabled || indice === 0}
+        className="shrink-0 text-muted-foreground hover:text-brand-green dark:text-white/70"
+        aria-label="Previous day"
+      >
+        <ChevronLeftIcon className="size-4" />
+      </Button>
+
+      <div
+        ref={contenedorRef}
+        className="relative flex-1 overflow-hidden rounded-xl bg-muted/60"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ touchAction: "pan-y" }}
+      >
+        <div
+          className="flex"
+          style={{
+            transform: `translateX(calc(${-indice * 100}% + ${desplazamiento * 100}%))`,
+            transition: arrastrando ? "none" : "transform 0.3s ease",
+          }}
+        >
+          {DIAS.map((dia) => (
+            <div
+              key={dia}
+              className="flex w-full shrink-0 items-center gap-3 px-3 py-3"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-green text-white text-sm font-semibold tabular-nums">
+                {String(dia).padStart(2, "0")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium dark:text-white">Day {dia}</p>
+                <p className="text-xs text-muted-foreground dark:text-white/60">
+                  {dia === 1
+                    ? "First day of the month."
+                    : dia === 31
+                      ? "Last day of the month."
+                      : `Day ${dia} of the month.`}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => irA(indice + 1)}
+        disabled={disabled || indice === DIAS.length - 1}
+        className="shrink-0 text-muted-foreground hover:text-brand-green dark:text-white/70"
+        aria-label="Next day"
+      >
+        <ChevronRightIcon className="size-4" />
+      </Button>
+    </div>
+  );
+}
+
+// Horizontal swipe picker for the recurrence. Shows one option at a time and
+// allows switching by dragging sideways (touch or mouse) or by using the side
+// arrows. It snaps to the nearest option on release.
+function RecurrenciaPicker({
+  valor,
+  onChange,
+  disabled,
+}: {
+  valor: string;
+  onChange: (valor: string) => void;
+  disabled?: boolean;
+}) {
+  const indice = Math.max(0, RECURRENCIAS.indexOf(valor));
+  const [arrastrando, setArrastrando] = useState(false);
+  const [desplazamiento, setDesplazamiento] = useState(0);
+  const inicioRef = useRef<{ x: number; indice: number } | null>(null);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+
+  const irA = (nuevo: number) => {
+    const limite = Math.min(Math.max(nuevo, 0), RECURRENCIAS.length - 1);
+    if (limite !== indice) {
+      onChange(RECURRENCIAS[limite] ?? valor);
+    }
+  };
+
+  const onPointerDown = (evento: React.PointerEvent) => {
+    if (disabled) return;
+    inicioRef.current = { x: evento.clientX, indice };
+    setArrastrando(true);
+    (evento.target as Element).setPointerCapture?.(evento.pointerId);
+  };
+
+  const onPointerMove = (evento: React.PointerEvent) => {
+    if (!arrastrando || !inicioRef.current) return;
+    const ancho = contenedorRef.current?.offsetWidth ?? 1;
+    const delta = evento.clientX - inicioRef.current.x;
+    setDesplazamiento(delta / ancho);
+  };
+
+  const onPointerUp = () => {
+    if (!inicioRef.current) return;
+    const umbral = 0.2;
+    if (desplazamiento < -umbral) {
+      irA(inicioRef.current.indice + 1);
+    } else if (desplazamiento > umbral) {
+      irA(inicioRef.current.indice - 1);
+    }
+    inicioRef.current = null;
+    setArrastrando(false);
+    setDesplazamiento(0);
+  };
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => irA(indice - 1)}
+        disabled={disabled || indice === 0}
+        className="shrink-0 text-muted-foreground hover:text-brand-green dark:text-white/70"
+        aria-label="Previous recurrence"
+      >
+        <ChevronLeftIcon className="size-4" />
+      </Button>
+
+      <div
+        ref={contenedorRef}
+        className="relative flex-1 overflow-hidden rounded-xl bg-muted/60"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ touchAction: "pan-y" }}
+      >
+        <div
+          className="flex"
+          style={{
+            transform: `translateX(calc(${-indice * 100}% + ${desplazamiento * 100}%))`,
+            transition: arrastrando ? "none" : "transform 0.3s ease",
+          }}
+        >
+          {RECURRENCIAS.map((opcion) => {
+            const meta = RECURRENCIA_META[opcion];
+            return (
+              <div
+                key={opcion}
+                className="flex w-full shrink-0 items-center gap-3 px-3 py-3"
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-green text-white">
+                  {meta.icono}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium dark:text-white">{opcion}</p>
+                  <p className="text-xs text-muted-foreground dark:text-white/60">
+                    {meta.descripcion}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => irA(indice + 1)}
+        disabled={disabled || indice === RECURRENCIAS.length - 1}
+        className="shrink-0 text-muted-foreground hover:text-brand-green dark:text-white/70"
+        aria-label="Next recurrence"
+      >
+        <ChevronRightIcon className="size-4" />
+      </Button>
     </div>
   );
 }
